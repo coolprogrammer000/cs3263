@@ -1,0 +1,9 @@
+name: cs3263-sar
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.11
+  # Core scientific stack
+  - numpy>=1.26
+  - matplotlib>=3.8
