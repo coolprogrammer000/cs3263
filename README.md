@@ -57,7 +57,7 @@ main.py     – Benchmark runner and CLI entry point
 |---|---|
 | **State** | `(agent_pos, oxygen, inventory, doors_open, debris_cleared, victims_found, victims_rescued, medkits_taken)` |
 | **Actions** | `MOVE_*` (4 dirs), `PICKUP`, `OPEN_DOOR`, `CLEAR_DEBRIS`, `RESCUE` |
-| **Transition** | Deterministic — P(s'|s,a) = 1 |
+| **Transition** | Deterministic — P(s'\|s,a) = 1 |
 | **Reward** | +10 find victim, +20 rescue victim, +5 medkit, −1/step, −2/smoke step, −50 oxygen out, +100 all rescued |
 | **Terminal** | All victims rescued **or** oxygen <= 0 |
 
