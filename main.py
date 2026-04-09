@@ -5,7 +5,12 @@ from env import build_default_env
 from astar import AStarPlanner, HEURISTICS
 from qlearning import LinearQFunction
 from qlearning_astar import RescueFeatureExtractor, QHeuristicAStarPlanner
+from mdp_solvers import ValueIterationSolver, PolicyIterationSolver
 
+
+def run_mdp(solver_class, seed: int, num_rooms: int = 4):
+    env = build_default_env(seed=seed, num_rooms=num_rooms)
+    return solver_class(env).plan()
 
 def run_normal_astar(name: str, seed: int):
     env = build_default_env(seed=seed)
@@ -19,7 +24,7 @@ def run_qlearning_astar(seed: int, weights_path: str):
 
     feature_extractor = RescueFeatureExtractor(env)
     qfunc = LinearQFunction(feature_extractor=feature_extractor, alpha=0.05)
-    qfunc.load_weights("qlearning_astar/q-learning-weights.json")
+    qfunc.load_weights("q-learning-weights.json")
 
     planner = QHeuristicAStarPlanner(env=env, qfunc=qfunc, max_nodes=200_000)
     result = planner.plan()
@@ -62,7 +67,10 @@ def main():
     # q-guided A*
     qlearning_result = run_qlearning_astar(args.seed, args.weights)
     print_row("Q-Learning A*", qlearning_result)
-
+    
+    #mdp
+    print_row("Value Iter (4-rm)", run_mdp(ValueIterationSolver, args.seed))
+    print_row("Policy Iter (4-rm)", run_mdp(PolicyIterationSolver, args.seed))
 
 if __name__ == "__main__":
     main()
