@@ -704,11 +704,20 @@ def build_default_env(seed: int = 42, num_rooms: int = 9) -> SearchRescueEnv:
         occupied.add(p)
         return p
 
-    # Keys — placed in ancestor rooms, naturally creating key-chain dependencies
+    # Keys — placed in ancestor rooms, naturally creating key-chain dependencies.
+    # If a room is full (no EMPTY cells), downgrade the locked door to an
+    # unlocked door rather than leaving an unacquirable key on the map.
     for color, room_idx in key_placements.items():
         p = _place(room_idx, Tile.KEY)
         if p:
             item_colors[p] = color
+        else:
+            # Fallback: unlock the door so the map stays solvable
+            for door_pos, c in list(door_colors.items()):
+                if c == color:
+                    grid[door_pos[0]][door_pos[1]] = Tile.DOOR
+                    del door_colors[door_pos]
+                    break
 
     # Crowbar in room 0 (always immediately accessible)
     if needs_crowbar:
