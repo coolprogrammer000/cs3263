@@ -33,7 +33,6 @@ Terminal : all victims rescued  OR  oxygen <= 0
 """
 
 from __future__ import annotations
-import math
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -442,329 +441,247 @@ class SearchRescueEnv:
 
 
 # ---------------------------------------------------------------------------
-# Procedural map builder
+# Default map builder
 # ---------------------------------------------------------------------------
 
-def build_default_env(seed: int = 42, num_rooms: int = 9) -> SearchRescueEnv:
+def build_default_env_old(seed: int = 42) -> SearchRescueEnv:
     """
-    Procedurally generate a multi-room Search-and-Rescue environment.
+    Build a hand-crafted 15x20 map with 8 rooms for reproducible testing.
 
-    Parameters
-    ----------
-    seed      : RNG seed for full reproducibility
-    num_rooms : number of rooms (4-16 recommended; default 9).
-                Different seeds produce different room sizes, connections,
-                and item placements within the same room count.
-
-    Layout
-    ------
-    Rooms are arranged in a roughly square grid of varying sizes.
-    Adjacent rooms are connected through full carved corridors (1 cell wide)
-    that hold an unlocked door, a locked door, or debris.
-
-    Key dependencies form chains naturally:
-        room_0 holds key_A  ->  door_A unlocks room_1
-        room_1 holds key_B  ->  door_B unlocks room_2   (key in locked room)
-        ...
-
-    Solvability guarantee
-    ---------------------
-    - All rooms are connected via a random spanning tree.
-    - Keys for locked spanning-tree doors are placed in the BFS ancestor room,
-      so no key is ever locked behind the door it opens.
-    - Debris is placed only on non-spanning-tree (optional) edges, so every
-      room is reachable without a crowbar; the crowbar unlocks shortcuts.
-    - Oxygen budget scales generously with grid area.
+    Room layout (approximate):
+      [Room A] [Room B] [Room C] [Room D]
+      [Room E] [Room F] [Room G] [Room H]
+    Connected by doors; some locked, some blocked by debris.
     """
     rng = random.Random(seed)
-    num_rooms = max(4, min(num_rooms, 20))
 
-    # ------------------------------------------------------------------
-    # 1. Room grid dimensions
-    # ------------------------------------------------------------------
-    n_cols_r = max(2, round(math.sqrt(num_rooms)))
-    n_rows_r = math.ceil(num_rooms / n_cols_r)
-    total_slots = n_rows_r * n_cols_r
+    W  = Tile.WALL
+    E  = Tile.EMPTY
+    D  = Tile.DOOR
+    DL = Tile.DOOR_L
+    DB = Tile.DEBRIS
+    SM = Tile.SMOKE
+    V  = Tile.VICTIM
+    MK = Tile.MEDKIT
+    K  = Tile.KEY
+    CR = Tile.CROWBAR
+    EX = Tile.EXIT
 
-    # Independent random height/width per room slot
-    room_h = [rng.randint(4, 7) for _ in range(total_slots)]
-    room_w = [rng.randint(4, 8) for _ in range(total_slots)]
-
-    # Each strip shares its boundary at the widest/tallest room in that strip
-    row_max_h = [
-        max(room_h[ri * n_cols_r + ci] for ci in range(n_cols_r))
-        for ri in range(n_rows_r)
+    # 15 rows x 20 cols
+    grid = [
+        #0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19
+        [W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W ],  # 0
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  EX, W ],  # 1
+        [W,  E,  E,  E,  E,  W,  E,  SM, E,  E,  W,  E,  E,  E,  E,  D,  E,  E,  E,  W ],  # 2
+        [W,  E,  K,  E,  E,  DL, E,  E,  E,  V,  W,  E,  E,  MK, E,  W,  E,  E,  E,  W ],  # 3
+        [W,  E,  E,  E,  E,  W,  E,  SM, E,  E,  D,  E,  E,  E,  E,  W,  E,  E,  E,  W ],  # 4
+        [W,  W,  D,  W,  W,  W,  W,  W,  W,  W,  W,  W,  D,  W,  W,  W,  W,  W,  W,  W ],  # 5
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  W ],  # 6
+        [W,  E,  E,  E,  E,  D,  E,  E,  CR, E,  W,  E,  V,  E,  E,  DL, E,  E,  E,  W ],  # 7
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  D,  E,  E,  E,  E,  W,  E,  E,  E,  W ],  # 8
+        [W,  W,  W,  DB, W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  DB, W,  W,  W,  W,  W ],  # 9
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  W ],  # 10
+        [W,  E,  MK, E,  E,  D,  E,  SM, SM, E,  W,  E,  E,  E,  E,  D,  E,  E,  E,  W ],  # 11
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  DL, E,  E,  E,  E,  W,  E,  V,  E,  W ],  # 12
+        [W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  E,  W,  E,  E,  E,  W ],  # 13
+        [W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W,  W ],  # 14
     ]
-    col_max_w = [
-        max(room_w[ri * n_cols_r + ci] for ri in range(n_rows_r))
-        for ci in range(n_cols_r)
-    ]
 
-    # Top-left interior corner of each room strip
-    row_starts = [1 + sum(row_max_h[i] + 1 for i in range(ri)) for ri in range(n_rows_r)]
-    col_starts = [1 + sum(col_max_w[i] + 1 for i in range(ci)) for ci in range(n_cols_r)]
+    door_colors = {
+        (3,  5):  "red",    # locked door between room A and B
+        (7,  15): "blue",   # locked door between room C and D
+        (12, 10): "green",  # locked door between lower rooms
+    }
 
-    total_rows = 1 + sum(h + 1 for h in row_max_h)
-    total_cols = 1 + sum(w + 1 for w in col_max_w)
+    item_colors = {
+        (3, 2): "red",   # red key in room A
+    }
 
-    # ------------------------------------------------------------------
-    # 2. Carve room interiors
-    # ------------------------------------------------------------------
-    grid: List[List[int]] = [[Tile.WALL] * total_cols for _ in range(total_rows)]
-    room_rect: Dict[int, Tuple[int, int, int, int]] = {}  # (top, left, bot, right)
+    # Blue key hidden in room B (row 6-8, col 6-9)
+    grid[6][8] = K
+    item_colors[(6, 8)] = "blue"
 
-    for ri in range(n_rows_r):
-        for ci in range(n_cols_r):
-            idx = ri * n_cols_r + ci
-            if idx >= num_rooms:
-                continue
-            t = row_starts[ri]
-            l = col_starts[ci]
-            h = room_h[idx]
-            w = room_w[idx]
-            for r in range(t, t + h):
-                for c in range(l, l + w):
-                    grid[r][c] = Tile.EMPTY
-            room_rect[idx] = (t, l, t + h - 1, l + w - 1)
+    # Green key in room H (row 10-13, col 16-18)
+    grid[10][17] = K
+    item_colors[(10, 17)] = "green"
 
-    # ------------------------------------------------------------------
-    # 3. Build corridors between adjacent rooms
-    # ------------------------------------------------------------------
-    # Each edge: (room_a, room_b, door_pos, extra_empty_cells)
-    # door_pos       — the single tile that becomes DOOR / DOOR_L / DEBRIS
-    # extra_empty_cells — remaining corridor tiles, always carved as EMPTY
-    # The door is placed immediately adjacent to room_a so the agent can
-    # stand inside room_a and operate it.
-    #
-    # Why full corridors?
-    #   Rooms can be narrower than their strip's maximum width, leaving
-    #   multiple wall tiles between them.  A single door tile would be
-    #   unreachable from the far room without carving the whole gap.
+    return SearchRescueEnv(
+        grid=grid,
+        door_colors=door_colors,
+        item_colors=item_colors,
+        start_pos=(1, 1),
+        max_oxygen=300,
+    )
+def build_default_env(rows: int = 15, cols: int = 20, seed: int = 42) -> SearchRescueEnv:
+    rng = random.Random(seed)
 
-    def _build_corridor(
-        idx_a: int, idx_b: int, horizontal: bool
-    ) -> Tuple[Optional[Tuple[int, int]], List[Tuple[int, int]]]:
-        ta, la, ba, ra = room_rect[idx_a]
-        tb, lb, bb, rb = room_rect[idx_b]
-        if horizontal:                      # idx_a is left room, idx_b is right
-            ov_top = max(ta, tb)
-            ov_bot = min(ba, bb)
-            if ov_top > ov_bot:
-                return None, []
-            mid = (ov_top + ov_bot) // 2
-            door_pos = (mid, ra + 1)        # immediately right of room_a
-            extra    = [(mid, c) for c in range(ra + 2, lb)]
-        else:                               # idx_a is top room, idx_b is bottom
-            ov_left  = max(la, lb)
-            ov_right = min(ra, rb)
-            if ov_left > ov_right:
-                return None, []
-            mid = (ov_left + ov_right) // 2
-            door_pos = (ba + 1, mid)        # immediately below room_a
-            extra    = [(r, mid) for r in range(ba + 2, tb)]
-        return door_pos, extra
+    if rows < 10 or cols < 12:
+        raise ValueError("rows and cols are too small for the default layout, minimum:15 x 20 layout")
 
-    all_edges: List[Tuple[int, int, Tuple[int, int], List[Tuple[int, int]]]] = []
-    for ri in range(n_rows_r):
-        for ci in range(n_cols_r):
-            idx = ri * n_cols_r + ci
-            if idx >= num_rooms:
-                continue
-            if ci + 1 < n_cols_r:
-                idx_r = ri * n_cols_r + (ci + 1)
-                if idx_r < num_rooms:
-                    dp, ex = _build_corridor(idx, idx_r, horizontal=True)
-                    if dp:
-                        all_edges.append((idx, idx_r, dp, ex))
-            if ri + 1 < n_rows_r:
-                idx_d = (ri + 1) * n_cols_r + ci
-                if idx_d < num_rooms:
-                    dp, ex = _build_corridor(idx, idx_d, horizontal=False)
-                    if dp:
-                        all_edges.append((idx, idx_d, dp, ex))
+    W  = Tile.WALL
+    E  = Tile.EMPTY
+    DL = Tile.DOOR_L
+    DB = Tile.DEBRIS
+    SM = Tile.SMOKE
+    V  = Tile.VICTIM
+    MK = Tile.MEDKIT
+    K  = Tile.KEY
+    CR = Tile.CROWBAR
+    EX = Tile.EXIT
 
-    # ------------------------------------------------------------------
-    # 4. Randomised Kruskal spanning tree
-    # ------------------------------------------------------------------
-    rng.shuffle(all_edges)
-    uf_parent = list(range(num_rooms))
+    # ------------------------------------------------------------
+    # 1) base grid: empty interior + border walls
+    # ------------------------------------------------------------
+    grid = [[E for _ in range(cols)] for _ in range(rows)]
 
-    def _find(x: int) -> int:
-        while uf_parent[x] != x:
-            uf_parent[x] = uf_parent[uf_parent[x]]
-            x = uf_parent[x]
-        return x
+    for r in range(rows):
+        grid[r][0] = W
+        grid[r][cols - 1] = W
+    for c in range(cols):
+        grid[0][c] = W
+        grid[rows - 1][c] = W
 
-    def _union(a: int, b: int) -> bool:
-        pa, pb = _find(a), _find(b)
-        if pa == pb:
-            return False
-        uf_parent[pa] = pb
-        return True
+    # ------------------------------------------------------------
+    # 2) split into 4 rooms with one vertical + one horizontal wall
+    # ------------------------------------------------------------
+    mid_r = rows // 2
+    mid_c = cols // 2
 
-    spanning: List[Tuple] = []
-    extras:   List[Tuple] = []
-    for e in all_edges:
-        (spanning if _union(e[0], e[1]) else extras).append(e)
+    for r in range(1, rows - 1):
+        grid[r][mid_c] = W
+    for c in range(1, cols - 1):
+        grid[mid_r][c] = W
 
-    # Extra edges (cycles) add complexity without breaking connectivity
-    n_extra = min(len(extras), max(1, num_rooms // 3))
-    connections = spanning + rng.sample(extras, n_extra)
+    # room bounds: (r1, r2, c1, c2), inclusive
+    rooms = {
+        "TL": (1, mid_r - 1, 1, mid_c - 1),
+        "TR": (1, mid_r - 1, mid_c + 1, cols - 2),
+        "BL": (mid_r + 1, rows - 2, 1, mid_c - 1),
+        "BR": (mid_r + 1, rows - 2, mid_c + 1, cols - 2),
+    }
 
-    # Set of door positions that belong to the spanning tree
-    spanning_door_set = {e[2] for e in spanning}
+    # track occupied cells so we do not place multiple objects on same tile
+    occupied = set()
 
-    # ------------------------------------------------------------------
-    # 5. BFS order from room 0 on the spanning tree
-    # ------------------------------------------------------------------
-    tree_adj: Dict[int, List[int]] = {i: [] for i in range(num_rooms)}
-    for a, b, _, __ in spanning:
-        tree_adj[a].append(b)
-        tree_adj[b].append(a)
-
-    bfs_order: List[int] = []
-    visited_bfs: set = {0}
-    queue = [0]
-    while queue:
-        cur = queue.pop(0)
-        bfs_order.append(cur)
-        for nb in tree_adj[cur]:
-            if nb not in visited_bfs:
-                visited_bfs.add(nb)
-                queue.append(nb)
-
-    bfs_rank = {r: i for i, r in enumerate(bfs_order)}
-
-    # ------------------------------------------------------------------
-    # 6. Carve all corridors; assign door types
-    # ------------------------------------------------------------------
-    door_colors: Dict[Tuple[int, int], str] = {}
-    item_colors: Dict[Tuple[int, int], str] = {}
-
-    color_pool = ["red", "blue", "green", "yellow", "purple",
-                  "orange", "cyan", "magenta"]
-    rng.shuffle(color_pool)
-    color_iter = iter(color_pool)
-
-    key_placements: Dict[str, int] = {}   # color -> room_idx where key goes
-    needs_crowbar = False
-
-    # Scale locked-door probability down for larger maps to keep state space
-    # tractable: each locked door exponentially multiplies inventory states.
-    locked_prob = max(0.15, 0.28 - 0.01 * max(0, num_rooms - 9))
-
-    for a, b, door_pos, extra_cells in connections:
-        # Carve the full corridor gap as EMPTY first
-        for cell in extra_cells:
-            grid[cell[0]][cell[1]] = Tile.EMPTY
-
-        # Orient so `a` is the shallower (BFS-closer-to-start) room
-        if bfs_rank.get(a, 0) > bfs_rank.get(b, 0):
-            a, b = b, a
-
-        roll = rng.random()
-        if roll < locked_prob:
-            # Locked door — key placed in room a (always accessible before b)
-            try:
-                color = next(color_iter)
-            except StopIteration:
-                grid[door_pos[0]][door_pos[1]] = Tile.DOOR
-                continue
-            door_colors[door_pos] = color
-            grid[door_pos[0]][door_pos[1]] = Tile.DOOR_L
-            key_placements[color] = a
-        elif roll < 0.40 and door_pos not in spanning_door_set:
-            # Debris only on non-spanning (optional) edges: every room stays
-            # reachable via spanning-tree doors; debris just blocks shortcuts
-            grid[door_pos[0]][door_pos[1]] = Tile.DEBRIS
-            needs_crowbar = True
-        else:
-            grid[door_pos[0]][door_pos[1]] = Tile.DOOR
-
-    # ------------------------------------------------------------------
-    # 7. Place items
-    # ------------------------------------------------------------------
-    occupied: set = set()
-
-    def _room_empty_cells(room_idx: int) -> List[Tuple[int, int]]:
-        t, l, b, r = room_rect[room_idx]
-        return [
-            (rr, cc)
-            for rr in range(t, b + 1)
-            for cc in range(l, r + 1)
-            if grid[rr][cc] == Tile.EMPTY and (rr, cc) not in occupied
+    def random_cell_in_room(room_name: str):
+        r1, r2, c1, c2 = rooms[room_name]
+        candidates = [
+            (r, c)
+            for r in range(r1, r2 + 1)
+            for c in range(c1, c2 + 1)
+            if (r, c) not in occupied
         ]
-
-    def _place(room_idx: int, tile_type: int) -> Optional[Tuple[int, int]]:
-        candidates = _room_empty_cells(room_idx)
         if not candidates:
-            return None
-        p = rng.choice(candidates)
-        grid[p[0]][p[1]] = tile_type
-        occupied.add(p)
-        return p
+            raise ValueError(f"No free cells left in room {room_name}")
+        pos = rng.choice(candidates)
+        occupied.add(pos)
+        return pos
 
-    # Keys — placed in ancestor rooms, naturally creating key-chain dependencies.
-    # If a room is full (no EMPTY cells), downgrade the locked door to an
-    # unlocked door rather than leaving an unacquirable key on the map.
-    for color, room_idx in key_placements.items():
-        p = _place(room_idx, Tile.KEY)
-        if p:
-            item_colors[p] = color
-        else:
-            # Fallback: unlock the door so the map stays solvable
-            for door_pos, c in list(door_colors.items()):
-                if c == color:
-                    grid[door_pos[0]][door_pos[1]] = Tile.DOOR
-                    del door_colors[door_pos]
-                    break
+    # ------------------------------------------------------------
+    # 3) choose 4 random door positions on the cross walls
+    #    all doors are LOCKED
+    # ------------------------------------------------------------
+    upper_vertical_rows = list(range(2, mid_r - 1))
+    lower_vertical_rows = list(range(mid_r + 2, rows - 2))
+    left_horizontal_cols = list(range(2, mid_c - 1))
+    right_horizontal_cols = list(range(mid_c + 2, cols - 2))
 
-    # Crowbar in room 0 (always immediately accessible)
-    if needs_crowbar:
-        _place(0, Tile.CROWBAR)
+    if not upper_vertical_rows or not lower_vertical_rows:
+        raise ValueError("Not enough rows to place vertical doors safely")
+    if not left_horizontal_cols or not right_horizontal_cols:
+        raise ValueError("Not enough cols to place horizontal doors safely")
 
-    # Victims — concentrated in later BFS rooms for challenge.
-    # Cap at 6 to keep state space tractable (each victim adds a dimension).
-    n_victims = max(3, min(num_rooms // 2, 6))
-    later_half = bfs_order[max(1, len(bfs_order) // 2):]
-    victim_rooms = (later_half * math.ceil(n_victims / max(1, len(later_half))))[:n_victims]
+    door_up = (rng.choice(upper_vertical_rows), mid_c)       # TL <-> TR
+    door_down = (rng.choice(lower_vertical_rows), mid_c)     # BL <-> BR
+    door_left = (mid_r, rng.choice(left_horizontal_cols))    # TL <-> BL
+    door_right = (mid_r, rng.choice(right_horizontal_cols))  # TR <-> BR
+
+    for r, c in [door_up, door_down, door_left, door_right]:
+        grid[r][c] = DL
+
+    # fixed color-chain so map is always solvable
+    # TL contains keys to first leave start room
+    door_colors = {
+        door_up: "red",
+        door_left: "yellow",
+        door_right: "blue",
+        door_down: "green",
+    }
+
+    item_colors = {}
+
+    # ------------------------------------------------------------
+    # 4) place start and exit
+    # ------------------------------------------------------------
+    start_pos = (1, 1)
+    occupied.add(start_pos)
+
+    # keep exit in top-right room so the agent must travel
+    exit_pos = random_cell_in_room("TR")
+    grid[exit_pos[0]][exit_pos[1]] = EX
+
+    # ------------------------------------------------------------
+    # 5) place keys
+    #
+    # red key    in TL -> opens TL<->TR
+    # yellow key in TL -> opens TL<->BL
+    # blue key   in TR -> opens TR<->BR
+    # green key  in BL -> opens BL<->BR
+    # orange key extra useless key
+    # ------------------------------------------------------------
+    red_key_pos = random_cell_in_room("TL")
+    yellow_key_pos = random_cell_in_room("TL")
+    blue_key_pos = random_cell_in_room("TR")
+    green_key_pos = random_cell_in_room("BL")
+
+    for pos, color in [
+        (red_key_pos, "red"),
+        (yellow_key_pos, "yellow"),
+        (blue_key_pos, "blue"),
+        (green_key_pos, "green"),
+    ]:
+        grid[pos[0]][pos[1]] = K
+        item_colors[pos] = color
+
+    useless_room = rng.choice(["TL", "TR", "BL", "BR"])
+    useless_key_pos = random_cell_in_room(useless_room)
+    grid[useless_key_pos[0]][useless_key_pos[1]] = K
+    item_colors[useless_key_pos] = "orange"   # no matching door
+
+    # ------------------------------------------------------------
+    # 6) place other objects randomly
+    # ------------------------------------------------------------
+    crowbar_pos = random_cell_in_room(rng.choice(["BL", "BR"]))
+    grid[crowbar_pos[0]][crowbar_pos[1]] = CR
+
+    medkit_pos = random_cell_in_room(rng.choice(["TL", "TR", "BL", "BR"]))
+    grid[medkit_pos[0]][medkit_pos[1]] = MK
+
+    # victims
+    victim_rooms = ["TR", "BL", "BR"]
     rng.shuffle(victim_rooms)
-    for room_idx in victim_rooms:
-        _place(room_idx, Tile.VICTIM)
+    for room in victim_rooms[:3]:
+        pos = random_cell_in_room(room)
+        grid[pos[0]][pos[1]] = V
 
-    # Medkits — scattered across all rooms
-    for _ in range(max(2, num_rooms // 3)):
-        _place(rng.choice(bfs_order), Tile.MEDKIT)
+    # smoke
+    smoke_rooms = ["TL", "TR", "BL", "BR"]
+    rng.shuffle(smoke_rooms)
+    for room in smoke_rooms[:2]:
+        pos = random_cell_in_room(room)
+        grid[pos[0]][pos[1]] = SM
 
-    # Smoke patches — traversable, not added to `occupied`
-    for _ in range(max(2, num_rooms // 3)):
-        room_idx = rng.choice(bfs_order)
-        for _ in range(rng.randint(1, 3)):
-            candidates = _room_empty_cells(room_idx)
-            if candidates:
-                p = rng.choice(candidates)
-                grid[p[0]][p[1]] = Tile.SMOKE
-
-    # Exit — in the deepest BFS room
-    for room_idx in reversed(bfs_order):
-        if _place(room_idx, Tile.EXIT):
-            break
-
-    # ------------------------------------------------------------------
-    # 8. Start position in room 0
-    # ------------------------------------------------------------------
-    candidates = _room_empty_cells(0)
-    start_pos = rng.choice(candidates) if candidates else room_rect[0][:2]
-
-    # ------------------------------------------------------------------
-    # 9. Oxygen budget — generous scaling with map size and victim count
-    # ------------------------------------------------------------------
-    max_oxygen = max(300, (total_rows + total_cols) * 3 * n_victims + 200)
+    # debris
+    debris_rooms = ["BL", "BR", "TR"]
+    rng.shuffle(debris_rooms)
+    for room in debris_rooms[:2]:
+        pos = random_cell_in_room(room)
+        grid[pos[0]][pos[1]] = DB
 
     return SearchRescueEnv(
         grid=grid,
         door_colors=door_colors,
         item_colors=item_colors,
         start_pos=start_pos,
-        max_oxygen=max_oxygen,
+        max_oxygen=300 * (rows * cols // (10 * 12)),  # scale oxygen with map size
     )

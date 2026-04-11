@@ -11,8 +11,7 @@ Pluggable heuristics (all admissible unless noted):
   2. manhattan       – min Manhattan distance to nearest unvisited victim + exit
   3. resource_aware  – Manhattan + oxygen-budget penalty term (slightly inadmissible,
                        useful for pruning oxygen-infeasible branches early)
-  4. mst / landmark  – admissible MST lower bound over all unvisited victims + exit
-                       (replaces the old inadmissible nearest-neighbour landmark)
+  4. landmark        – TSP lower-bound over victim waypoints (admissible)
 
 Usage
 -----
@@ -138,23 +137,13 @@ def heuristic_resource_aware(state: State, env: SearchRescueEnv) -> float:
     return h_base
 
 
-def heuristic_mst(state: State, env: SearchRescueEnv) -> float:
+def heuristic_landmark(state: State, env: SearchRescueEnv) -> float:
     """
-    Admissible MST-based TSP lower-bound heuristic.
+    TSP-style landmark heuristic (admissible).
 
-    Any path from the current position that visits all unvisited victims
-    and then reaches an exit is a Hamiltonian path — and every Hamiltonian
-    path is a spanning tree.  Therefore:
-
-        optimal completion cost
-          >= MST({current_pos} U {unvisited_victims})   [travel among victims]
-           + min dist(any victim, any exit)              [final leg to exit]
-
-    This is strictly tighter than the plain Manhattan heuristic when there
-    are multiple unvisited victims, and unlike the old nearest-neighbour
-    landmark it is guaranteed admissible (never overestimates).
-
-    Complexity: O(k^2) per call where k = number of unvisited victims.
+    Computes a greedy lower-bound tour cost:
+      current pos -> nearest unvisited victim -> ... -> exit
+    using nearest-neighbour insertion on Manhattan distances.
     """
     pos = state.agent_pos
     unvisited = [v for v in env.victim_positions if v not in state.victims_found]
@@ -168,34 +157,20 @@ def heuristic_mst(state: State, env: SearchRescueEnv) -> float:
             return 0.0
         return float(min(_manhattan(pos, e) for e in exits))
 
-    # Prim's MST over {current_pos} U {unvisited victims}
-    nodes = [pos] + unvisited
-    n = len(nodes)
-    in_mst = [False] * n
-    min_edge = [math.inf] * n
-    min_edge[0] = 0.0
-    mst_cost = 0.0
+    # Nearest-neighbour greedy tour
+    remaining = list(unvisited)
+    current   = pos
+    total_dist = 0.0
 
-    for _ in range(n):
-        # Pick cheapest node not yet in MST
-        u = min(
-            (i for i in range(n) if not in_mst[i]),
-            key=lambda i: min_edge[i],
-        )
-        in_mst[u] = True
-        mst_cost += min_edge[u]
-        # Relax edges from u
-        for v in range(n):
-            if not in_mst[v]:
-                d = float(_manhattan(nodes[u], nodes[v]))
-                if d < min_edge[v]:
-                    min_edge[v] = d
+    while remaining:
+        nearest = min(remaining, key=lambda v: _manhattan(current, v))
+        total_dist += _manhattan(current, nearest)
+        current = nearest
+        remaining.remove(nearest)
 
-    # Lower bound for the exit leg: cheapest (victim -> exit) pair
-    exit_dist = float(min(
-        _manhattan(v, e) for v in unvisited for e in exits
-    ))
-    return mst_cost + exit_dist
+    # From last victim to nearest exit
+    total_dist += min(_manhattan(current, e) for e in exits)
+    return total_dist
 
 
 # Registry for easy lookup by name
@@ -203,8 +178,7 @@ HEURISTICS: Dict[str, Callable] = {
     "zero":           heuristic_zero,
     "manhattan":      heuristic_manhattan,
     "resource_aware": heuristic_resource_aware,
-    "mst":            heuristic_mst,
-    "landmark":       heuristic_mst,   # backward-compatible alias
+    "landmark":       heuristic_landmark,
 }
 
 
